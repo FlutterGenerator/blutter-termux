@@ -22,26 +22,21 @@ jobs:
             libcapstone-dev \
             libfmt-dev \
             curl
-
           pip3 install requests pyelftools
 
       - name: Download APK (uz.beeline.odp) via APKPure
         run: |
           echo "Downloading APK for uz.beeline.odp..."
-
-          # Ссылка для скачивания из APKPure — стабильная
-          APK_URL=$(curl -s "https://apkpure.com/ru/beeline-uzbekistan/uz.beeline.odp/download?from=details" \
-            | grep -o 'https://[^"]*\.apk' | head -n 1)
-
+          APP_PAGE="https://apkpure.com/ru/beeline-uzbekistan/uz.beeline.odp/download?from=details"
+          # Получаем страницу с имитацией браузера
+          page=$(curl -s -L -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" "$APP_PAGE")
+          APK_URL=$(echo "$page" | grep -Po 'https://download\.apkpure\.com/[^"]+\.apk' | head -1)
           echo "APK URL: $APK_URL"
-
           if [ -z "$APK_URL" ]; then
             echo "ERROR: APK not found!"
             exit 1
           fi
-
-          curl -L "$APK_URL" -o app.apk
-
+          curl -L -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" "$APK_URL" -o app.apk
           ls -lh app.apk
 
       - name: Run blutter-termux
