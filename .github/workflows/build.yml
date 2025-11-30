@@ -1,12 +1,10 @@
-name: Run blutter-termux
+name: blutter-termux-download-and-analyze
 
 on:
   workflow_dispatch:
-  push:
-    branches: [ master ]
 
 jobs:
-  build:
+  analyze:
     runs-on: ubuntu-latest
 
     steps:
@@ -22,16 +20,41 @@ jobs:
             git \
             libicu-dev \
             libcapstone-dev \
-            libfmt-dev
+            libfmt-dev \
+            curl
 
           pip3 install requests pyelftools
 
+      - name: Download APK (uz.beeline.odp) via APKPure
+        run: |
+          echo "Downloading APK for uz.beeline.odp..."
+
+          # Ссылка для скачивания из APKPure — стабильная
+          APK_URL=$(curl -s "https://apkpure.com/ru/beeline-uzbekistan/uz.beeline.odp/download?from=details" \
+            | grep -o 'https://[^"]*\.apk' | head -n 1)
+
+          echo "APK URL: $APK_URL"
+
+          if [ -z "$APK_URL" ]; then
+            echo "ERROR: APK not found!"
+            exit 1
+          fi
+
+          curl -L "$APK_URL" -o app.apk
+
+          ls -lh app.apk
+
       - name: Run blutter-termux
         run: |
-          python3 blutter.py --help
+          python3 blutter.py app.apk --verbose || true
 
-      - name: Upload script as artifact
+      - name: Upload analysis results
         uses: actions/upload-artifact@v5
         with:
-          name: blutter-termux-script
-          path: .
+          name: blutter-output
+          path: |
+            asm/
+            objs.txt
+            pp.txt
+            blutter_frida.js
+          if-no-files-found: ignore
