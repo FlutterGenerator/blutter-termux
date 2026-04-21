@@ -34,13 +34,18 @@ def load_source(modname, filename):
 
 
 dart_versions = {
-    "3.4": ["3.4.0", "3.4.1", "3.4.2", "3.4.3", "3.4.4"],
-    "3.3": ["3.3.0", "3.3.1", "3.3.2", "3.3.3", "3.3.4"],
-    "3.5": ["3.5.0", "3.5.1", "3.5.2", "3.5.3"],
     "3.0_aa": ["3.0.0", "3.0.1", "3.0.2"],
     "3.0_90": ["3.0.3", "3.0.4", "3.0.5", "3.0.6", "3.0.7"],
     "3.1": ["3.1.0", "3.1.1", "3.1.2", "3.1.3", "3.1.4", "3.1.5"],
     "3.2": ["3.2.0", "3.2.1", "3.2.2", "3.2.3", "3.2.4", "3.2.5", "3.2.6"],
+    "3.4": ["3.4.0", "3.4.1", "3.4.2", "3.4.3", "3.4.4"],
+    "3.3": ["3.3.0", "3.3.1", "3.3.2", "3.3.3", "3.3.4"],
+    "3.5": ["3.5.0", "3.5.1", "3.5.2", "3.5.3", "3.5.4"],
+    "3.6": ["3.6.1", "3.6.2"],
+    "3.7": ["3.7.0", "3.7.1", "3.7.2"],
+    "3.8": ["3.8.0", "3.8.1"],
+    "3.9": ["3.9.0", "3.9.2"],
+    "3.10": ["3.10.0", "3.10.1", "3.10.3", "3.10.4", "3.10.7", "3.10.8", "3.10.9"]
 }
 
 
@@ -195,7 +200,12 @@ def checkout_dart(info: DartLibInfo):
                     if pos != -1:
                         # replace "||" with "//" to comment out "!defined(HOST_ARCH_ARM64)"
                         mm[pos+36:pos+38] = b'//'
-
+                    else:
+                        # newer Dart version use static_assert for checking RUNTIME_FUNCTION size, comment out that line
+                        pos = mm.find(b'\nstatic_assert(sizeof(')
+                        if pos != -1:
+                            mm[pos+1:pos+3] = b'//'
+    
     return clonedir
 
 
@@ -204,12 +214,16 @@ def get_dartlib_name(ver: str, arch: str, os_name: str):
 
 
 def cmake_dart(info: DartLibInfo, target_dir: str):
+    # Dart 3.11.0+ requires C++20 https://github.com/dart-lang/sdk/commit/3ebbaf08fb9236023b8f37bb9e9de85a9be8e281
+    major, minor = map(int, info.version.split(".")[:2])
+    cpp_std = "20" if (major, minor) >= (3, 11) else "17"
+
     # On windows, need developer command prompt for x64 (can check with "cl" command)
     # create dartsdk/vx.y.z/CMakefile.list
     with open(CMAKE_TEMPLATE_FILE, "r") as f:
         code = f.read()
     with open(os.path.join(target_dir, "CMakeLists.txt"), "w") as f:
-        f.write(code.replace("VERSION_PLACE_HOLDER", info.version))
+        f.write(code.replace("VERSION_PLACE_HOLDER", info.version).replace("STD_PLACE_HOLDER", cpp_std))
 
     # create dartsdk/vx.y.z/Config.cmake.in
     with open(os.path.join(target_dir, "Config.cmake.in"), "w") as f:
