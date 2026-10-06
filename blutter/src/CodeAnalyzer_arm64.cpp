@@ -175,8 +175,10 @@ static VarValue* getPoolObject(DartApp& app, intptr_t offset, A64::Register dstR
 		return new VarInteger(imm, VarValue::NativeInt);
 	}
 	else if (objType == dart::ObjectPool::EntryType::kNativeFunction) {
-		//val = pool.RawValueAt(idx);
-		throw std::runtime_error("getting native function pool object from Dart code");
+		// normally, it is only used in internal library (can be ignored)
+		// but it can be loaded in Dart code (e.g. for calling bootstrap native)
+		const auto addr = pool.RawValueAt(idx);
+		return new VarExpression(fmt::format("NativeFn_{:#x}", addr));
 	}
 	else {
 		throw std::runtime_error(fmt::format("unknown pool object type: {}", (int)objType).c_str());
@@ -679,7 +681,18 @@ std::unique_ptr<CallLeafRuntimeInstr> FunctionAnalyzer::processCallLeafRuntime(A
 		std::vector<std::unique_ptr<MoveRegInstr>> movILs;
 		while (true) {
 			auto il = processMoveRegInstr(insn);
-			INSN_ASSERT(il);
+			if (!il) {
+				// Dart 3.11+ may emit an unscaled load from the caller frame
+				// (e.g., ldur x2, [x29, #-8]) to reload a parameter before the
+				// leaf runtime call. It is not a register move, so skip it.
+				if ((insn.id() == ARM64_INS_LDR || insn.id() == ARM64_INS_LDUR) && insn.ops(1).mem.base == CSREG_DART_FP) {
+					++insn;
+					continue;
+				}
+				else {
+					INSN_ASSERT(il);
+				}
+			}
 			if (il->srcReg == A64::Register::FP) {
 				INSN_ASSERT(il->dstReg == A64::Register::TMP2);
 				break;
@@ -1990,6 +2003,7 @@ std::unique_ptr<SetupParametersInstr> FunctionAnalyzer::processPrologueParameter
 		++insn;
 	}
 
+#ifndef BLUTTER_DART_SINGLE_SNAPSHOT
 	// PrologueBuilder::BuildClosureContextHandling()
 	// closure context handling
 	if (dartFn->IsClosure() && insn.id() == ARM64_INS_LDUR && insn.ops(1).mem.disp == AOT_Closure_context_offset - dart::kHeapObjectTag) {
@@ -2021,6 +2035,7 @@ std::unique_ptr<SetupParametersInstr> FunctionAnalyzer::processPrologueParameter
 				}
 			}
 	}
+#endif
 
 	// TypeArgument from Arguments Descriptor might be used
 	if (argsDescReg != ARM64_REG_INVALID)
@@ -2029,6 +2044,7 @@ std::unique_ptr<SetupParametersInstr> FunctionAnalyzer::processPrologueParameter
 	if (endPrologueAddr != 0 && insn.address() < endPrologueAddr)
 		handleInitialization();
 
+#ifndef BLUTTER_DART_SINGLE_SNAPSHOT
 	// closure delayed type arguments
 	if (dartFn->IsClosure()) {
 		const auto save_ins = insn.Current();
@@ -2143,6 +2159,7 @@ std::unique_ptr<SetupParametersInstr> FunctionAnalyzer::processPrologueParameter
 			insn.SetCurrent(save_ins);
 		}
 	}
+#endif
 
 	if (insn.address() < endPrologueAddr) {
 		// short-lived aliases for prologue parameter register shuffle
